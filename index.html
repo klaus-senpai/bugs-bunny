@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tech Wave Code Follower UI</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/locomotive-scroll@4.1.4/dist/locomotive-scroll.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/locomotive-scroll@4.1.4/dist/locomotive-scroll.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+  <style>
+    html, body {
+      margin:0;
+      padding:0;
+      width:100vw;
+      height:100vh;
+      overflow:hidden;
+      background:#181d24;
+    }
+    .scroll-container {
+      position:relative;
+      width:100vw; height:100vh; overflow:hidden;
+    }
+    canvas {display:block;position:absolute;top:0;left:0;width:100vw;height:100vh;z-index:0;}
+  </style>
+</head>
+<body>
+  <div data-scroll-container class="scroll-container">
+    <canvas id="bg"></canvas>
+  </div>
+  <script>
+    // Locomotive Scroll Setup
+    let scroll = new LocomotiveScroll({
+      el: document.querySelector('.scroll-container'),
+      smooth: true,
+      lerp: 0.08
+    });
+
+    // Canvas Initialization
+    const canvas = document.getElementById('bg'),
+          ctx = canvas.getContext('2d');
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Colors: tech palette
+    const COLORS = ["#44dfb6","#e75b95","#81eefd","#b9a2fd","#fbda61","#ff8056","#fc526b","#ffdd35"];
+    function rc() { return COLORS[(Math.random()*COLORS.length)|0]; }
+    function rand(a,b){return Math.random()*(b-a)+a;}
+    function randInt(a,b){return Math.floor(rand(a,b+1));}
+
+    // Mouse position and inertia
+    let mouse = {x: canvas.width/2, y: canvas.height/2};
+    let mouseTrail=[];
+    document.addEventListener('mousemove', e => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    });
+
+    // Central UI impact logic: generate snaky path shapes that flock towards mouse position
+    function makePath(cx,cy,mag,phase,mouseEffect = 1) {
+      // Returns an array of [x, y] positions along a wavy/curvy path
+      let pts=[];
+      let segs=randInt(38,66);
+      for(let i=0;i<segs;i++){
+        let a = i/segs*2*Math.PI;
+        // Mouse effect: path bends towards mouse if nearby
+        let mx = mouse.x - cx, my = mouse.y - cy;
+        let mInfluence = mouseEffect * Math.exp(-((mx*mx+my*my)/(canvas.width*canvas.height/3)));
+        let r = mag*(0.85+0.19*Math.sin(a*2 + phase) + 0.07*Math.cos(a*8 + phase))
+              + mInfluence * Math.sin(a+phase*2) * 32 * Math.sin(Date.now()/900+phase);
+        pts.push([
+          cx + Math.cos(a)*r + Math.sin(a+phase)*20 + mInfluence * Math.cos(a-phase)*6,
+          cy + Math.sin(a)*r + Math.cos(a*.7+phase)*20 + mInfluence * Math.sin(a+phase)*7
+        ]);
+      }
+      return pts;
+    }
+
+    // Animated Outlined Shapes
+    let SHAPES = [];
+    function makeShape(){
+      let mag = rand(50,150);
+      let cx = rand(0.15*canvas.width,0.85*canvas.width),
+          cy = rand(0.15*canvas.height,0.85*canvas.height);
+      let phase = rand(0,Math.PI*2);
+      let color = rc();
+      let speed = rand(.001,.006);
+      return {
+        cx,cy,mag,phase,speed,color,
+        time: Date.now()+rand(0,99999),
+        path: makePath(cx,cy,mag,phase,0),
+        opacity: rand(.19,.47),
+        linew: rand(1.2,2.6),
+        wiggle: rand(.8,1.8),
+        impact: rand(.79,1.2)
+      }
+    }
+    // Tech Code Shapes (brackets, snippets, circuit lines)
+    let CODES = [];
+    function makeCodeShape(){
+      let x = rand(0.2*canvas.width, 0.8*canvas.width),
+          y = rand(0.2*canvas.height, 0.8*canvas.height),
+          len = rand(36,120),
+          ang = rand(0,Math.PI*2),
+          type = ["bracket","snippet","trace"][randInt(0,2)];
+      let color = rc();
+      return {
+        x,y,len,ang,type,color,phase:rand(0,Math.PI*2),opacity:rand(.22,.5),linew:rand(1,2.5),
+        follow: rand(.92, 1.44)
+      }
+    }
+
+    for(let i=0;i<12;i++) SHAPES.push(makeShape());
+    for(let i=0;i<10;i++) CODES.push(makeCodeShape());
+
+    // Animation Loop
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      let scrollY = scroll.scroll.instance?.scroll.y||0;
+      let scrollX = scroll.scroll.instance?.scroll.x||0;
+
+      // Draw underlying shapes (paths with mouse curvature)
+      for(let s of SHAPES){
+        s.phase += s.speed * s.wiggle;
+        let mouseDist = Math.sqrt((s.cx-mouse.x)**2+(s.cy-mouse.y)**2);
+        // Animate center so shapes chase mouse and swirl on scroll
+        gsap.to(s, {
+          cx: s.cx + (mouse.x-s.cx)*.01*s.impact + Math.sin(Date.now()/700+s.cx+s.phase)*2.4 + Math.sin(scrollY/20+s.cx)*2.0,
+          cy: s.cy + (mouse.y-s.cy)*.01*s.impact + Math.cos(Date.now()/750+s.cy+s.phase)*2.1 + Math.cos(scrollX/19+s.cy)*2.4,
+          duration: .50, ease: "power1.out", overwrite: true
+        });
+        s.path = makePath(s.cx,s.cy,s.mag,s.phase, (mouseDist<380?1.3:0.5));
+        // Outline snaky/tech shape
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(s.path[0][0],s.path[0][1]);
+        for(let j=1;j<s.path.length;j++)
+          ctx.lineTo(s.path[j][0],s.path[j][1]);
+        ctx.closePath();
+        ctx.globalAlpha = s.opacity;
+        ctx.strokeStyle = s.color;
+        ctx.shadowColor = s.color;
+        ctx.shadowBlur = 17;
+        ctx.lineWidth = s.linew;
+        ctx.stroke();
+
+        // Internal pattern lines, tech-ish
+        ctx.globalAlpha = s.opacity * .40;
+        for(let p=0;p<s.path.length;p+=12){
+          ctx.beginPath();
+          ctx.moveTo(s.path[p][0],s.path[p][1]);
+          let q = (p+randInt(5,16))%s.path.length;
+          ctx.lineTo(s.path[q][0],s.path[q][1]);
+          ctx.lineWidth = s.linew * .7;
+          ctx.strokeStyle = s.color;
+          ctx.shadowBlur = 10;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Draw code-following shapes
+      for(let c of CODES){
+        // Animate code "snippet/bracket/trace" to follow mouse
+        let dx = mouse.x-c.x, dy = mouse.y-c.y;
+        let angleToMouse = Math.atan2(dy, dx);
+        let dist = Math.sqrt(dx*dx+dy*dy);
+        anime({
+          targets: c,
+          x: c.x + dx * .018 * c.follow + Math.sin(Date.now()/600+c.phase)*2.2,
+          y: c.y + dy * .018 * c.follow + Math.cos(Date.now()/600+c.phase)*1.8,
+          ang: angleToMouse + Math.sin(Date.now()/500+c.x)*.09,
+          duration:500, easing:'easeInOutSine'
+        });
+        ctx.save();
+        ctx.globalAlpha = c.opacity * (dist<305?1:0.6);
+        ctx.strokeStyle = c.color;
+        ctx.shadowColor = c.color;
+        ctx.shadowBlur = dist<280?20:8;
+        ctx.lineWidth = c.linew;
+
+        if(c.type==="bracket"){
+          ctx.beginPath();
+          let lw = c.len;
+          ctx.moveTo(c.x - lw/2, c.y - lw/2);
+          ctx.lineTo(c.x - lw/2, c.y + lw/2);
+          ctx.moveTo(c.x + lw/2, c.y - lw/2);
+          ctx.lineTo(c.x + lw/2, c.y + lw/2);
+          ctx.stroke();
+        }else if(c.type==="snippet"){
+          ctx.beginPath();
+          let lx = Math.cos(c.ang)*c.len/2, ly = Math.sin(c.ang)*c.len/2;
+          ctx.moveTo(c.x-lx, c.y-ly);
+          ctx.lineTo(c.x+lx, c.y+ly);
+          // little ticks
+          for(let s=-1;s<=1;s+=2){
+            ctx.moveTo(c.x+lx*s, c.y+ly*s);
+            ctx.lineTo(c.x+lx*s+ly*0.12, c.y+ly*s-lx*0.12);
+          }
+          ctx.stroke();
+        }else if(c.type==="trace"){
+          ctx.beginPath();
+          let segs=randInt(5,10);
+          let prevX = c.x, prevY = c.y;
+          for(let j=1;j<=segs;j++){
+            let a = c.ang + j/2+Math.sin(Date.now()/1200+j+c.x)*.11;
+            let rad = c.len/2 * (1-(j/segs)*.52) + dist/340;
+            let nextX = prevX + Math.cos(a)*rad, nextY = prevY + Math.sin(a)*rad;
+            ctx.lineTo(nextX, nextY);
+            prevX = nextX; prevY = nextY;
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // Dynamic Regeneration for Changing Patterns
+    setInterval(() => {
+      if(Math.random()>.6 && SHAPES.length<18) SHAPES.push(makeShape());
+      if(Math.random()>.8 && SHAPES.length>8) SHAPES.splice(randInt(0,SHAPES.length-1),1);
+      if(Math.random()>.6 && CODES.length<14) CODES.push(makeCodeShape());
+      if(Math.random()>.8 && CODES.length>5) CODES.splice(randInt(0,CODES.length-1),1);
+    }, 2100);
+
+    // Animation Frame
+    function loop(){
+      draw();
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</body>
+</html>
