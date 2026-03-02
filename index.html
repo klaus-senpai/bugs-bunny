@@ -46,7 +46,7 @@
     window.addEventListener('resize', resize);
 
     // Colors: tech palette
-    const COLORS = ["#44dfb6","#e75b95","#81eefd","#b9a2fd","#fbda61","#ff8056","#fc526b","#ffdd35"];
+    const COLORS = ["#44dfb6", "#e75b95", "#81eefd", "#b9a2fd", "#fbda61", "#ff8056", "#fc526b", "#ffdd35"];
     function rc() { return COLORS[(Math.random()*COLORS.length)|0]; }
     function rand(a,b){return Math.random()*(b-a)+a;}
     function randInt(a,b){return Math.floor(rand(a,b+1));}
@@ -58,68 +58,97 @@
       mouse.y = e.clientY;
     });
 
-    // Central UI impact logic: generate snaky path shapes that flock towards mouse position
+    // --- OCD/Structured Shape Distribution ---
+    // Place SHAPES on a circle/ellipse formation centered on canvas
+    function getCenters(n, radiusX, radiusY, offset=0) {
+      let arr = [], cx = canvas.width/2, cy = canvas.height/2;
+      for(let i=0;i<n;i++){ 
+        let angle = offset + i*2*Math.PI/n;
+        arr.push({
+          x: cx + Math.cos(angle)*radiusX,
+          y: cy + Math.sin(angle)*radiusY,
+          angle
+        });
+      }
+      return arr;
+    }
+
+    // Central UI snaky path generator, curved around its own structured center
     function makePath(cx,cy,mag,phase,mouseEffect = 1) {
       let pts=[];
-      let segs=randInt(38,66);
-      for(let i=0;i<segs;i++){ 
+      let segs=42;
+      for(let i=0;i<segs;i++){
         let a = i/segs*2*Math.PI;
         let mx = mouse.x - cx, my = mouse.y - cy;
         let mInfluence = mouseEffect * Math.exp(-((mx*mx+my*my)/(canvas.width*canvas.height/3)));
-        let r = mag*(0.85+0.19*Math.sin(a*2 + phase) + 0.07*Math.cos(a*8 + phase))
-              + mInfluence * Math.sin(a+phase*2) * 32 * Math.sin(Date.now()/900+phase);
+        let r = mag*(0.97+0.13*Math.sin(a*2 + phase) + 0.05*Math.cos(a*8 + phase)) + mInfluence * Math.sin(a+phase*2) * 22;
         pts.push([
-          cx + Math.cos(a)*r + Math.sin(a+phase)*20 + mInfluence * Math.cos(a-phase)*6,
-          cy + Math.sin(a)*r + Math.cos(a*.7+phase)*20 + mInfluence * Math.sin(a+phase)*7
+          cx + Math.cos(a)*r + Math.sin(a+phase)*14 + mInfluence * Math.cos(a-phase)*5,
+          cy + Math.sin(a)*r + Math.cos(a*.7+phase)*15 + mInfluence * Math.sin(a+phase)*5
         ]);
       }
       return pts;
     }
 
-    // Animated Outlined Shapes
+    // Structured Shapes
+    let structuredCenters = getCenters(10, canvas.width/3, canvas.height/3, Math.PI/10);
+
     let SHAPES = [];
-    function makeShape(){
-      let mag = rand(50,150);
-      let cx = rand(0.15*canvas.width,0.85*canvas.width),
-          cy = rand(0.15*canvas.height,0.85*canvas.height);
+    function makeShape(idx){
+      let centerObj = structuredCenters[idx % structuredCenters.length];
+      let mag = canvas.width/7 + 40 + 25*Math.cos(centerObj.angle*2 + Date.now()/25000);
       let phase = rand(0,Math.PI*2);
-      let color = rc();
-      let speed = rand(.001,.006);
+      let color = COLORS[idx % COLORS.length];
+      let speed = 0.003;
       return {
-        cx,cy,mag,phase,speed,color,
-        time: Date.now()+rand(0,99999),
-        path: makePath(cx,cy,mag,phase,0),
-        opacity: rand(.19,.47),
-        linew: rand(1.2,2.6),
-        wiggle: rand(.8,1.8),
-        impact: rand(.79,1.2)
-      }
-    }
-    // Tech Code Shapes (brackets, snippets, circuit lines)
-    let CODES = [];
-    function makeCodeShape(){
-      let x = rand(0.2*canvas.width, 0.8*canvas.width),
-          y = rand(0.2*canvas.height, 0.8*canvas.height),
-          len = rand(36,120),
-          ang = rand(0,Math.PI*2),
-          type = ["bracket","snippet","trace"][randInt(0,2)];
-      let color = rc();
-      return {
-        x,y,len,ang,type,color,phase:rand(0,Math.PI*2),opacity:rand(.22,.5),linew:rand(1,2.5),
-        follow: rand(.92, 1.44)
+        cx: centerObj.x, cy: centerObj.y, mag, phase, speed, color,
+        time: Date.now()+idx*999,
+        path: makePath(centerObj.x, centerObj.y, mag, phase, 0),
+        opacity: 0.27 + ((idx%3)*0.13),
+        linew: 2.2 + (idx%3),
+        wiggle: 1 + ((idx%2)*0.5),
+        impact: 1
       }
     }
 
-    for(let i=0;i<12;i++) SHAPES.push(makeShape());
-    for(let i=0;i<10;i++) CODES.push(makeCodeShape());
+    SHAPES = [];
+    for(let i=0; i<structuredCenters.length; i++) SHAPES.push(makeShape(i));
+
+    // --- OCD/Structured Code Shapes Distribution (Grid) ---
+    let codeGrid = [];
+    let gridRows = 4, gridCols = 4;
+    let paddingX = canvas.width/(gridCols+1), paddingY = canvas.height/(gridRows+1);
+    for(let r=1; r<=gridRows; r++) {
+      for(let c=1; c<=gridCols; c++) {
+        codeGrid.push({
+          x: c*paddingX,
+          y: r*paddingY,
+          idx: (r-1)*gridCols + (c-1)
+        });
+      }
+    }
+
+    // Structured Code Shapes
+    let CODES = [];
+    function makeCodeShape(obj){
+      let len = 64 + 16*Math.sin(obj.idx+Date.now()/10000);
+      let ang = Math.PI/4 + (obj.idx%gridCols)/gridCols*Math.PI;
+      let type = ["bracket","snippet","trace"][obj.idx%3];
+      let color = COLORS[obj.idx % COLORS.length];
+      return {
+        x: obj.x, y: obj.y, len, ang, type, color, phase:Math.PI/3 + obj.idx*0.11, opacity:0.42, linew:1.8,
+        follow: 1.08
+      }
+    }
+
+    CODES = [];
+    for(let i=0; i<codeGrid.length; i++) CODES.push(makeCodeShape(codeGrid[i]));
 
     // DRAW BUGS BUNNY FUNCTION
     function drawBugsBunny(ctx, x, y, scale=1) {
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(scale, scale);
-
-      // Ears
       ctx.lineWidth = 5;
       ctx.strokeStyle = "#bbbbbb";
       ctx.beginPath();
@@ -134,29 +163,25 @@
       ctx.bezierCurveTo(30,-170, 15,-105, 20,-60);
       ctx.stroke();
 
-      // Face outline
       ctx.lineWidth = 8;
       ctx.strokeStyle = "#bbbbbb";
       ctx.beginPath();
-      ctx.ellipse(13, 0, 40, 46, 0, Math.PI*1.2, Math.PI*2.7); // left cheek curve
-      ctx.ellipse(0, 0, 40, 46, 0, Math.PI*0.3, Math.PI*1.8);  // right cheek curve
+      ctx.ellipse(13, 0, 40, 46, 0, Math.PI*1.2, Math.PI*2.7);
+      ctx.ellipse(0, 0, 40, 46, 0, Math.PI*0.3, Math.PI*1.8);
       ctx.stroke();
 
-      // Nose
       ctx.lineWidth = 4;
       ctx.strokeStyle = "#a8717d";
       ctx.beginPath();
       ctx.arc(10, 10, 9, 0, Math.PI*2);
       ctx.stroke();
 
-      // Smile
       ctx.lineWidth = 3;
       ctx.strokeStyle = "#775751";
       ctx.beginPath();
       ctx.arc(13, 23, 16, Math.PI*0.15, Math.PI*0.95);
       ctx.stroke();
 
-      // Buck teeth
       ctx.lineWidth = 4;
       ctx.strokeStyle = "#fff";
       ctx.beginPath();
@@ -175,16 +200,13 @@
       let scrollY = scroll.scroll.instance?.scroll.y||0;
       let scrollX = scroll.scroll.instance?.scroll.x||0;
 
-      // Draw underlying shapes (paths with mouse curvature)
-      for(let s of SHAPES){
+      // --- Draw structured main shapes ---
+      for(let i=0;i<SHAPES.length;i++){
+        let s = SHAPES[i];
         s.phase += s.speed * s.wiggle;
-        let mouseDist = Math.sqrt((s.cx-mouse.x)**2+(s.cy-mouse.y)**2);
-        gsap.to(s, {
-          cx: s.cx + (mouse.x-s.cx)*.01*s.impact + Math.sin(Date.now()/700+s.cx+s.phase)*2.4 + Math.sin(scrollY/20+s.cx)*2.0,
-          cy: s.cy + (mouse.y-s.cy)*.01*s.impact + Math.cos(Date.now()/750+s.cy+s.phase)*2.1 + Math.cos(scrollX/19+s.cy)*2.4,
-          duration: .50, ease: "power1.out", overwrite: true
-        });
-        s.path = makePath(s.cx,s.cy,s.mag,s.phase, (mouseDist<380?1.3:0.5));
+        let newCx = s.cx + Math.sin(Date.now()/1300 + s.phase + i)*8;
+        let newCy = s.cy + Math.cos(Date.now()/1100 + s.phase + i)*8;
+        s.path = makePath(newCx,newCy,s.mag,s.phase,1);
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(s.path[0][0],s.path[0][1]);
@@ -194,40 +216,42 @@
         ctx.globalAlpha = s.opacity;
         ctx.strokeStyle = s.color;
         ctx.shadowColor = s.color;
-        ctx.shadowBlur = 17;
+        ctx.shadowBlur = 15;
         ctx.lineWidth = s.linew;
         ctx.stroke();
-        ctx.globalAlpha = s.opacity * .40;
+        ctx.globalAlpha = s.opacity * .35;
         for(let p=0;p<s.path.length;p+=12){
           ctx.beginPath();
           ctx.moveTo(s.path[p][0],s.path[p][1]);
-          let q = (p+randInt(5,16))%s.path.length;
+          let q = (p+13)%s.path.length;
           ctx.lineTo(s.path[q][0],s.path[q][1]);
-          ctx.lineWidth = s.linew * .7;
+          ctx.lineWidth = s.linew * .8;
           ctx.strokeStyle = s.color;
-          ctx.shadowBlur = 10;
+          ctx.shadowBlur = 8;
           ctx.stroke();
         }
         ctx.restore();
       }
 
-      // Draw code-following shapes
-      for(let c of CODES){
+      // --- Draw OCD code shapes in grid pattern ---
+      for(let i=0;i<CODES.length;i++){ 
+        let c = CODES[i];
+        let gridObj = codeGrid[i];
         let dx = mouse.x-c.x, dy = mouse.y-c.y;
-        let angleToMouse = Math.atan2(dy, dx);
         let dist = Math.sqrt(dx*dx+dy*dy);
+        let mouseInfluence = 1 + Math.cos(Date.now()/1000+i)*0.05;
         anime({
           targets: c,
-          x: c.x + dx * .018 * c.follow + Math.sin(Date.now()/600+c.phase)*2.2,
-          y: c.y + dy * .018 * c.follow + Math.cos(Date.now()/600+c.phase)*1.8,
-          ang: angleToMouse + Math.sin(Date.now()/500+c.x)*.09,
-          duration:500, easing:'easeInOutSine'
+          x: gridObj.x + dx * 0.04 * c.follow * mouseInfluence,
+          y: gridObj.y + dy * 0.04 * c.follow * mouseInfluence,
+          ang: c.ang + Math.sin(Date.now()/400 + i)*.05,
+          duration:400, easing:'easeInOutSine'
         });
         ctx.save();
-        ctx.globalAlpha = c.opacity * (dist<305?1:0.6);
+        ctx.globalAlpha = c.opacity * (dist<305?1:0.8);
         ctx.strokeStyle = c.color;
         ctx.shadowColor = c.color;
-        ctx.shadowBlur = dist<280?20:8;
+        ctx.shadowBlur = dist<200?16:4;
         ctx.lineWidth = c.linew;
         if(c.type==="bracket"){
           ctx.beginPath();
@@ -249,11 +273,11 @@
           ctx.stroke();
         }else if(c.type==="trace"){
           ctx.beginPath();
-          let segs=randInt(5,10);
+          let segs=8;
           let prevX = c.x, prevY = c.y;
           for(let j=1;j<=segs;j++){ 
-            let a = c.ang + j/2+Math.sin(Date.now()/1200+j+c.x)*.11;
-            let rad = c.len/2 * (1-(j/segs)*.52) + dist/340;
+            let a = c.ang + j/2+Math.sin(Date.now()/1200+j+c.x)*.09;
+            let rad = c.len/2 * (1-(j/segs)*.54) + dist/340;
             let nextX = prevX + Math.cos(a)*rad, nextY = prevY + Math.sin(a)*rad;
             ctx.lineTo(nextX, nextY);
             prevX = nextX; prevY = nextY;
@@ -264,19 +288,34 @@
       }
 
       // ---- DRAW BUGS BUNNY ----
-      drawBugsBunny(ctx, 110, 130, 1.1);     // Top left corner, scale 1.1
-      drawBugsBunny(ctx, mouse.x*0.8+55, mouse.y*0.65+40, 0.72); // Mouse trail, smaller
+      drawBugsBunny(ctx, 110, 130, 1.1);
+      drawBugsBunny(ctx, mouse.x*0.8+55, mouse.y*0.65+40, 0.72);
     }
 
-    setInterval(() => {
-      if(Math.random()>.6 && SHAPES.length<18) SHAPES.push(makeShape());
-      if(Math.random()>.8 && SHAPES.length>8) SHAPES.splice(randInt(0,SHAPES.length-1),1);
-      if(Math.random()>.6 && CODES.length<14) CODES.push(makeCodeShape());
-      if(Math.random()>.8 && CODES.length>5) CODES.splice(randInt(0,CODES.length-1),1);
-    }, 2100);
-
+    // Animation Frame
     function loop(){ draw(); requestAnimationFrame(loop); }
     loop();
+
+    // Responsive: Structured shapes follow viewport size
+    window.addEventListener('resize', ()=>{
+      resize();
+      structuredCenters = getCenters(10, canvas.width/3, canvas.height/3, Math.PI/10);
+      SHAPES = [];
+      for(let i=0; i<structuredCenters.length; i++) SHAPES.push(makeShape(i));
+      codeGrid = [];
+      paddingX = canvas.width/(gridCols+1); paddingY = canvas.height/(gridRows+1);
+      for(let r=1; r<=gridRows; r++) {
+        for(let c=1; c<=gridCols; c++) {
+          codeGrid.push({
+            x: c*paddingX,
+            y: r*paddingY,
+            idx: (r-1)*gridCols + (c-1)
+          });
+        }
+      }
+      CODES = [];
+      for(let i=0; i<codeGrid.length; i++) CODES.push(makeCodeShape(codeGrid[i]));
+    });
   </script>
 </body>
 </html>
